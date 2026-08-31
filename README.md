@@ -2,20 +2,6 @@
 
 Small client/server demo. The **server terminal** prints what the backend sees. **Streamlit** is the user.
 
-```mermaid
-flowchart LR
-  user["Streamlit client"]
-  server["FastAPI server"]
-  policy["Allowlist"]
-  agent["Stub agent"]
-
-  user -->|"POST /messages"| server
-  server --> policy
-  policy -->|not allowed| user
-  policy -->|admitted| agent
-  agent --> server
-  server -->|"JSON replies"| user
-```
 
 ## Run
 
