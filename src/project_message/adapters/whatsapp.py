@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from project_message.config import Settings
+from project_message.core.config import Settings
 
 GRAPH_VERSION = "v23.0"
 GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"

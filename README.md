@@ -1,6 +1,19 @@
 # WhatsApp Cloud API agent
 
-FastAPI webhook for [WhatsApp Cloud API](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started). Meta POSTs inbound messages to `/webhook`; a [Gemini](https://ai.google.dev/gemini-api/docs) call produces the reply; the server sends it through the Graph API. `/help` and `/status` stay local. Each other message is a fresh prompt (no chat history).
+FastAPI webhook for [WhatsApp Cloud API](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started). Meta POSTs inbound messages to `/webhook`; a [Pydantic AI](https://ai.pydantic.dev/) [Gemini](https://ai.google.dev/gemini-api/docs) agent produces the reply; the server sends it through the Graph API.
+
+`/help` and `/status` stay local. Other texts continue that sender’s conversation: each WhatsApp mobile number has its own in-memory session (`message_history`). `/reset` forgets only that number. `--reload` or a process restart clears all sessions.
+
+## Layout
+
+```
+src/project_message/
+  main.py           # FastAPI app
+  api/routes/       # /health, /webhook
+  core/config.py    # settings
+  services/         # agent + inbound orchestration
+  adapters/         # WhatsApp Cloud API
+```
 
 ## Run
 
@@ -9,7 +22,7 @@ Copy `.env.example` to `.env` at the **repo root** (next to `README.md`). Settin
 ```bash
 cp .env.example .env
 uv sync
-uv run uvicorn project_message.app:app --reload --port 8765
+uv run uvicorn project_message.main:app --reload --port 8765
 ```
 
 | Variable | Role |

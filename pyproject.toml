@@ -5,8 +5,8 @@ description = "WhatsApp Cloud API webhook agent"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
-    "google-genai>=2.21.0",
     "httpx>=0.28",
+    "pydantic-ai>=2.37.0",
     "pydantic-settings>=2.15.0",
     "uvicorn[standard]>=0.32",
 ]
