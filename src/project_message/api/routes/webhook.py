@@ -38,5 +38,10 @@ async def receive_webhook(
         payload = loads_payload(raw)
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail="invalid json") from exc
-    background_tasks.add_task(process_whatsapp_payload, payload, settings)
+    background_tasks.add_task(
+        process_whatsapp_payload,
+        payload,
+        settings,
+        request.app.state.sessions,
+    )
     return {"status": "ok"}
