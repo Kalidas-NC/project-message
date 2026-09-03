@@ -1,17 +1,14 @@
-"""WhatsApp agent: local commands plus a Pydantic AI reply with per-number history."""
+"""Local commands plus a Pydantic AI turn. Sessions live in session.py."""
 
 from __future__ import annotations
-
-import threading
 
 from pydantic_ai import Agent, ModelMessage
 from pydantic_ai.capabilities import ReinjectSystemPrompt
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 
-from project_message.adapters.whatsapp import digits_only
 from project_message.core.config import get_settings
-
+#TODO global variable for the agent removal
 HELP_TEXT = (
     "Commands:\n"
     "/help — list commands\n"
@@ -31,48 +28,52 @@ SYSTEM_PROMPT = (
 
 _FAIL = "I could not answer just now."
 
-_lock = threading.Lock()
-_sessions: dict[str, list[ModelMessage]] = {}
-_agent: Agent | None = None
+_COMMANDS = {
+    "/help": HELP_TEXT,
+    "/status": STATUS_TEXT,
+    "/reset": RESET_TEXT,
+}
 
 
-def _session_key(from_number: str) -> str:
-    return digits_only(from_number) or from_number
+def command_name(text: str) -> str | None:
+    stripped = text.strip().lower()
+    if stripped in _COMMANDS:
+        return stripped
+    return None
 
 
-def _get_agent() -> Agent:
-    global _agent
-    if _agent is None:
-        settings = get_settings()
-        provider = GoogleProvider(api_key=settings.gemini_api_key)
-        model = GoogleModel(settings.gemini_model, provider=provider)
-        _agent = Agent(
-            model,
-            instructions=SYSTEM_PROMPT,
-            capabilities=[ReinjectSystemPrompt()],
-        )
-    return _agent
+def command_reply(name: str) -> str:
+    return _COMMANDS[name]
 
 
-def _llm_reply(from_number: str, text: str) -> str:
+async def run_turn(
+    text: str,
+    history: list[ModelMessage],
+    conversation_id: str,
+) -> tuple[str, list[ModelMessage] | None]:
+    """One agent turn. CancelledError propagates. On failure, history is None."""
     settings = get_settings()
     if not settings.gemini_api_key:
         print("[agent] GEMINI_API_KEY unset", flush=True)
-        return _FAIL
-
-    key = _session_key(from_number)
-    with _lock:
-        history = list(_sessions.get(key, []))
+        return _FAIL, None
 
     try:
-        result = _get_agent().run_sync(
+        agent = Agent(
+            GoogleModel(
+                settings.gemini_model,
+                provider=GoogleProvider(api_key=settings.gemini_api_key),
+            ),
+            instructions=SYSTEM_PROMPT,
+            capabilities=[ReinjectSystemPrompt()],
+        )
+        result = await agent.run(
             text,
             message_history=history,
-            conversation_id=key,
+            conversation_id=conversation_id,
         )
     except Exception as exc:
         print(f"[agent] Gemini failed: {exc}", flush=True)
-        return _FAIL
+        return _FAIL, None
 
     output = result.output
     if isinstance(output, str):
@@ -81,27 +82,6 @@ def _llm_reply(from_number: str, text: str) -> str:
         body = str(output or "").strip()
     if not body:
         print("[agent] Gemini returned empty text", flush=True)
-        return _FAIL
+        return _FAIL, None
 
-    with _lock:
-        _sessions[key] = result.all_messages()
-    return body
-
-
-def reply(from_number: str, text: str) -> str | None:
-    stripped = text.strip()
-    if not stripped:
-        return None
-
-    command = stripped.lower()
-    if command == "/help":
-        return HELP_TEXT
-    if command == "/status":
-        return STATUS_TEXT
-    if command == "/reset":
-        key = _session_key(from_number)
-        with _lock:
-            _sessions.pop(key, None)
-        return RESET_TEXT
-
-    return _llm_reply(from_number, stripped)
+    return body, result.all_messages()

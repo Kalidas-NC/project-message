@@ -2,7 +2,7 @@
 
 FastAPI webhook for [WhatsApp Cloud API](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started). Meta POSTs inbound messages to `/webhook`; a [Pydantic AI](https://ai.pydantic.dev/) [Gemini](https://ai.google.dev/gemini-api/docs) agent produces the reply; the server sends it through the Graph API.
 
-`/help` and `/status` stay local. Other texts continue that sender’s conversation: each WhatsApp mobile number has its own in-memory session (`message_history`). `/reset` forgets only that number. `--reload` or a process restart clears all sessions.
+`/help` and `/status` stay local. Other texts wait a quiet window (`INBOUND_DEBOUNCE_SECONDS`, default 2s) so several bubbles become one user turn. If another text arrives before the reply is sent, that agent run is cancelled; `pending` keeps the texts and the window starts again. After a reply is sent, history is committed and `pending` is cleared. `/reset` forgets only that number. `--reload` or a process restart clears all sessions. Design: [docs/inbound-session.md](docs/inbound-session.md).
 
 ## Layout
 
@@ -11,7 +11,7 @@ src/project_message/
   main.py           # FastAPI app
   api/routes/       # /health, /webhook
   core/config.py    # settings
-  services/         # agent + inbound orchestration
+  services/         # session window, agent, inbound orchestration
   adapters/         # WhatsApp Cloud API
 ```
 
@@ -30,9 +30,11 @@ uv run uvicorn project_message.main:app --reload --port 8765
 | `WHATSAPP_VERIFY_TOKEN` | String you invent. Meta GET handshake. |
 | `WHATSAPP_APP_SECRET` | App settings → Basic. HMAC on POST. Leave empty to skip the check locally. |
 | `WHATSAPP_ACCESS_TOKEN` | API Setup → Generate access token. Sending only. |
-| `WHATSAPP_PHONE_NUMBER_ID` | API Setup, next to the test number. |
+| `WHATSAPP_PHONE_NUMBER_ID` | API Setup, next to the test number. Sending. |
+| `WHATSAPP_WABA_ID` | API Setup → WhatsApp Business Account ID. Used only for `subscribed_apps` curls. Not the phone-number ID. |
 | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) key. Required for LLM replies. |
 | `GEMINI_MODEL` | Optional. Defaults to `gemini-3.6-flash`. |
+| `INBOUND_DEBOUNCE_SECONDS` | Quiet window before the agent runs. Defaults to `2`. |
 
 ## Try locally (no Meta)
 
@@ -63,7 +65,7 @@ Server terminal prints `[server] received` / `[server] sending`. Without Graph c
 
 If Meta shows the inbound JSON in the dashboard but uvicorn never logs `POST /webhook`, the WhatsApp Business account is not subscribed to **your** app. Handshake only proves the URL; `subscribed_apps` is what routes live events to that app’s callback.
 
-Load `.env`, then replace `WABA_ID` with the WhatsApp Business account ID (API Setup, or `entry[].id` on a sample payload).
+Load `.env`, then use `$WHATSAPP_WABA_ID` (API Setup → WhatsApp Business Account ID, or `entry[].id` on a sample payload). Do not use `WHATSAPP_PHONE_NUMBER_ID` here.
 
 **List apps already subscribed** (GET). You should see your app name (for example `nc-test`). Meta’s debugger app **WA DevX Webhook Events 1P App** may also appear; that is normal and does not replace yours.
 
@@ -71,14 +73,14 @@ Load `.env`, then replace `WABA_ID` with the WhatsApp Business account ID (API S
 cd ~/code/personal/project-message
 set -a && source .env && set +a
 
-curl -sS "https://graph.facebook.com/v23.0/WABA_ID/subscribed_apps" \
+curl -sS "https://graph.facebook.com/v23.0/$WHATSAPP_WABA_ID/subscribed_apps" \
   -H "Authorization: Bearer $WHATSAPP_ACCESS_TOKEN"
 ```
 
 **Subscribe this app** (POST). Uses the app that owns `WHATSAPP_ACCESS_TOKEN`. It does not send a WhatsApp message and does not call FastAPI; it only tells Meta to POST future inbound events to your Callback URL. Safe to run again; `{ "success": true }` means it worked.
 
 ```bash
-curl -sS -X POST "https://graph.facebook.com/v23.0/WABA_ID/subscribed_apps" \
+curl -sS -X POST "https://graph.facebook.com/v23.0/$WHATSAPP_WABA_ID/subscribed_apps" \
   -H "Authorization: Bearer $WHATSAPP_ACCESS_TOKEN"
 ```
 

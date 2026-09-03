@@ -14,6 +14,7 @@ _STR_FIELDS = (
     "whatsapp_app_secret",
     "whatsapp_access_token",
     "whatsapp_phone_number_id",
+    "whatsapp_waba_id",
     "gemini_api_key",
     "gemini_model",
 )
@@ -30,8 +31,10 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_access_token: str = ""
     whatsapp_phone_number_id: str = ""
+    whatsapp_waba_id: str = ""
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.6-flash"
+    inbound_debounce_seconds: float = 2
 
     @field_validator(*_STR_FIELDS, mode="before")
     @classmethod
